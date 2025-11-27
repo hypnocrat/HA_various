@@ -1,20 +1,22 @@
 blueprint:
-  name: IKEA RODRET 2-Gang Zigbee2MQTT Switch - Dual Light Control
+  name: IKEA RODRET Switch - Dual Light Control (Permissive)
   description: >
-    Control two separate lights with an IKEA RODRET switch using Zigbee2MQTT.
+    Control two separate lights with an IKEA RODRET switch.
     - Press "on" to toggle Light 1.
     - Press "off" to toggle Light 2.
     - Hold "on" to increase brightness of both lights.
     - Hold "off" to decrease brightness of both lights.
-    This blueprint bypasses the device selector and uses the MQTT topic directly for maximum compatibility.
+    This version uses a permissive device selector that finds any device with "RODRET" in its name.
   domain: automation
   input:
-    mqtt_topic:
-      name: RODRET Switch MQTT Topic
-      description: >
-        The base MQTT topic for your RODRET switch (e.g., 'zigbee2mqtt/Bedroom Switch').
-        Find this in the Zigbee2MQTT integration settings.
-      default: ""
+    rodret_switch:
+      name: RODRET Switch
+      description: "Select your IKEA RODRET switch. The selector finds any device with 'RODRET' in its name."
+      selector:
+        device:
+          filter:
+            - integration: zha
+            - integration: mqtt
     light_1:
       name: Light 1 (On Button)
       description: "The light controlled by the 'on' button press."
@@ -37,60 +39,107 @@ blueprint:
           max: 50
           unit_of_measurement: "%"
 
-# Trigger directly on the MQTT topic for the specified actions
+# Universal Trigger for ZHA and Zigbee2MQTT
 trigger:
-  - platform: mqtt
-    topic: !input mqtt_topic
-    id: press_on
-    value_template: "{{ value_json.action == 'on' }}"
-  - platform: mqtt
-    topic: !input mqtt_topic
-    id: press_off
-    value_template: "{{ value_json.action == 'off' }}"
-  - platform: mqtt
-    topic: !input mqtt_topic
-    id: brightness_up_start
-    value_template: "{{ value_json.action == 'brightness_move_up' }}"
-  - platform: mqtt
-    topic: !input mqtt_topic
-    id: brightness_down_start
-    value_template: "{{ value_json.action == 'brightness_move_down' }}"
-  - platform: mqtt
-    topic: !input mqtt_topic
-    id: brightness_stop
-    value_template: "{{ value_json.action == 'brightness_stop' }}"
-
-condition: []
+  - platform: device
+    device_id: !input rodret_switch
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_1
+    id: press_on_zha
+  - platform: device
+    device_id: !input rodret_switch
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_2
+    id: press_off_zha
+  - platform: device
+    device_id: !input rodret_switch
+    domain: zha
+    type: remote_button_long_press
+    subtype: button_1
+    id: hold_on_zha
+  - platform: device
+    device_id: !input rodret_switch
+    domain: zha
+    type: remote_button_long_release
+    subtype: button_1
+    id: release_on_zha
+  - platform: device
+    device_id: !input rodret_switch
+    domain: zha
+    type: remote_button_long_press
+    subtype: button_2
+    id: hold_off_zha
+  - platform: device
+    device_id: !input rodret_switch
+    domain: zha
+    type: remote_button_long_release
+    subtype: button_2
+    id: release_off_zha
+  - platform: device
+    device_id: !input rodret_switch
+    domain: mqtt
+    type: button_short_press
+    subtype: button_1
+    id: press_on_mqtt
+  - platform: device
+    device_id: !input rodret_switch
+    domain: mqtt
+    type: button_short_press
+    subtype: button_2
+    id: press_off_mqtt
+  - platform: device
+    device_id: !input rodret_switch
+    domain: mqtt
+    type: button_long_press
+    subtype: button_1
+    id: hold_on_mqtt
+  - platform: device
+    device_id: !input rodret_switch
+    domain: mqtt
+    type: button_long_release
+    subtype: button_1
+    id: release_on_mqtt
+  - platform: device
+    device_id: !input rodret_switch
+    domain: mqtt
+    type: button_long_press
+    subtype: button_2
+    id: hold_off_mqtt
+  - platform: device
+    device_id: !input rodret_switch
+    domain: mqtt
+    type: button_long_release
+    subtype: button_2
+    id: release_off_mqtt
 
 action:
   - choose:
-      # --- Toggle Light 1 (On Button) ---
+      # --- ZHA ACTIONS ---
       - conditions:
           - condition: trigger
-            id: press_on
+            id: press_on_zha
         sequence:
           - service: light.toggle
             target:
               entity_id: !input light_1
-
-      # --- Toggle Light 2 (Off Button) ---
       - conditions:
           - condition: trigger
-            id: press_off
+            id: press_off_zha
         sequence:
           - service: light.toggle
             target:
               entity_id: !input light_2
-
-      # --- Brightness Up Loop ---
       - conditions:
           - condition: trigger
-            id: brightness_up_start
+            id: hold_on_zha
         sequence:
           - repeat:
               until:
                 - condition: trigger
-                  id: brightness_stop
+                  id:
+                    - release_on_zha
               sequence:
                 - service: light.turn_on
                   target:
@@ -100,16 +149,67 @@ action:
                   data:
                     brightness_step_pct: !input brightness_step
                 - delay: 0.5
-
-      # --- Brightness Down Loop ---
       - conditions:
           - condition: trigger
-            id: brightness_down_start
+            id: hold_off_zha
         sequence:
           - repeat:
               until:
                 - condition: trigger
-                  id: brightness_stop
+                  id:
+                    - release_off_zha
+              sequence:
+                - service: light.turn_on
+                  target:
+                    entity_id:
+                      - !input light_1
+                      - !input light_2
+                  data:
+                    brightness_step_pct: -!input brightness_step
+                - delay: 0.5
+
+      # --- Zigbee2MQTT ACTIONS ---
+      - conditions:
+          - condition: trigger
+            id: press_on_mqtt
+        sequence:
+          - service: light.toggle
+            target:
+              entity_id: !input light_1
+      - conditions:
+          - condition: trigger
+            id: press_off_mqtt
+        sequence:
+          - service: light.toggle
+            target:
+              entity_id: !input light_2
+      - conditions:
+          - condition: trigger
+            id: hold_on_mqtt
+        sequence:
+          - repeat:
+              until:
+                - condition: trigger
+                  id:
+                    - release_on_mqtt
+              sequence:
+                - service: light.turn_on
+                  target:
+                    entity_id:
+                      - !input light_1
+                      - !input light_2
+                  data:
+                    brightness_step_pct: !input brightness_step
+                - delay: 0.5
+      - conditions:
+          - condition: trigger
+            id: hold_off_mqtt
+        sequence:
+          - repeat:
+              until:
+                - condition: trigger
+                  id:
+                    - release_off_mqtt
               sequence:
                 - service: light.turn_on
                   target:

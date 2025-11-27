@@ -15,9 +15,9 @@ blueprint:
       selector:
         device:
           integration: mqtt
-          manufacturer: IKEA of Sweden
-          model: RODRET wireless dimmer
-    light_1:
+          manufacturer: IKEA
+          model: 
+    light_1:RODRET wireless dimmer/power switch (E2201)
       name: Light 1 (On Button)
       description: "The light controlled by the 'on' button press."
       selector:

@@ -14,7 +14,6 @@ blueprint:
       description: "The IKEA RODRET 2-gang switch to use."
       selector:
         device:
-          integration: mqtt
           manufacturer: IKEA
           model: RODRET wireless dimmer/power switch (E2201)
     light_1:

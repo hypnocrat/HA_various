@@ -1,0 +1,207 @@
+blueprint:
+  name: IKEA RODRET 2-Gang Zigbee Switch - Dual Light Control
+  description: >
+    Control two separate lights with an IKEA RODRET switch.
+    - Press "on" to toggle Light 1.
+    - Press "off" to toggle Light 2.
+    - Hold "on" to increase brightness of both lights.
+    - Hold "off" to decrease brightness of both lights.
+    Works with both Zigbee2MQTT and ZHA.
+  domain: automation
+  input:
+    rodret_switch:
+      name: RODRET Switch
+      description: "The IKEA RODRET 2-gang switch to use."
+      selector:
+        device:
+          integration: mqtt
+          manufacturer: IKEA of Sweden
+          model: RODRET Wireless Dimmer Switch (E2201)
+    light_1:
+      name: Light 1 (On Button)
+      description: "The light controlled by the 'on' button press."
+      selector:
+        entity:
+          domain: light
+    light_2:
+      name: Light 2 (Off Button)
+      description: "The light controlled by the 'off' button press."
+      selector:
+        entity:
+          domain: light
+    brightness_step:
+      name: Brightness Step
+      description: "The amount to increase or decrease brightness when holding a button."
+      default: 10
+      selector:
+        number:
+          min: 1
+          max: 50
+          unit_of_measurement: "%"
+
+# ZHA Trigger
+trigger:
+  - platform: device
+    device_id: !input rodret_switch
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_1
+    id: press_on
+  - platform: device
+    device_id: !input rodret_switch
+    domain: zha
+    type: remote_button_short_press
+    subtype: button_2
+    id: press_off
+  - platform: device
+    device_id: !input rodret_switch
+    domain: zha
+    type: remote_button_long_press
+    subtype: button_1
+    id: hold_on
+  - platform: device
+    device_id: !input rodret_switch
+    domain: zha
+    type: remote_button_long_release
+    subtype: button_1
+    id: release_on
+  - platform: device
+    device_id: !input rodret_switch
+    domain: zha
+    type: remote_button_long_press
+    subtype: button_2
+    id: hold_off
+  - platform: device
+    device_id: !input rodret_switch
+    domain: zha
+    type: remote_button_long_release
+    subtype: button_2
+    id: release_off
+
+# Zigbee2MQTT Trigger (will fire if ZHA trigger doesn't match)
+  - platform: mqtt
+    topic: zigbee2mqtt/+
+    id: mqtt_toggle_on
+    value_template: "{{ value_json.action == 'on' }}"
+  - platform: mqtt
+    topic: zigbee2mqtt/+
+    id: mqtt_toggle_off
+    value_template: "{{ value_json.action == 'off' }}"
+  - platform: mqtt
+    topic: zigbee2mqtt/+
+    id: mqtt_brightness_up
+    value_template: "{{ value_json.action == 'brightness_move_up' }}"
+  - platform: mqtt
+    topic: zigbee2mqtt/+
+    id: mqtt_brightness_down
+    value_template: "{{ value_json.action == 'brightness_move_down' }}"
+  - platform: mqtt
+    topic: zigbee2mqtt/+
+    id: mqtt_brightness_stop
+    value_template: "{{ value_json.action == 'brightness_stop' }}"
+
+action:
+  - choose:
+      # --- ZHA ACTIONS ---
+      - conditions:
+          - condition: trigger
+            id: press_on
+        sequence:
+          - service: light.toggle
+            target:
+              entity_id: !input light_1
+      - conditions:
+          - condition: trigger
+            id: press_off
+        sequence:
+          - service: light.toggle
+            target:
+              entity_id: !input light_2
+      - conditions:
+          - condition: trigger
+            id: hold_on
+        sequence:
+          - repeat:
+              until:
+                - condition: trigger
+                  id:
+                    - release_on
+              sequence:
+                - service: light.turn_on
+                  target:
+                    entity_id:
+                      - !input light_1
+                      - !input light_2
+                  data:
+                    brightness_step_pct: !input brightness_step
+                - delay: 0.5
+      - conditions:
+          - condition: trigger
+            id: hold_off
+        sequence:
+          - repeat:
+              until:
+                - condition: trigger
+                  id:
+                    - release_off
+              sequence:
+                - service: light.turn_on
+                  target:
+                    entity_id:
+                      - !input light_1
+                      - !input light_2
+                  data:
+                    brightness_step_pct: -!input brightness_step
+                - delay: 0.5
+
+      # --- Zigbee2MQTT ACTIONS ---
+      - conditions:
+          - condition: trigger
+            id: mqtt_toggle_on
+        sequence:
+          - service: light.toggle
+            target:
+              entity_id: !input light_1
+      - conditions:
+          - condition: trigger
+            id: mqtt_toggle_off
+        sequence:
+          - service: light.toggle
+            target:
+              entity_id: !input light_2
+      - conditions:
+          - condition: trigger
+            id: mqtt_brightness_up
+        sequence:
+          - repeat:
+              until:
+                - condition: trigger
+                  id: mqtt_brightness_stop
+              sequence:
+                - service: light.turn_on
+                  target:
+                    entity_id:
+                      - !input light_1
+                      - !input light_2
+                  data:
+                    brightness_step_pct: !input brightness_step
+                - delay: 0.5
+      - conditions:
+          - condition: trigger
+            id: mqtt_brightness_down
+        sequence:
+          - repeat:
+              until:
+                - condition: trigger
+                  id: mqtt_brightness_stop
+              sequence:
+                - service: light.turn_on
+                  target:
+                    entity_id:
+                      - !input light_1
+                      - !input light_2
+                  data:
+                    brightness_step_pct: -!input brightness_step
+                - delay: 0.5
+
+mode: restart

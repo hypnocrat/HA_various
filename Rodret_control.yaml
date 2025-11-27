@@ -1,21 +1,21 @@
 blueprint:
-  name: IKEA RODRET Switch - Dual Light Control (Zigbee2MQTT Only)
+  name: IKEA RODRET Switch - Dual Light Control (Robust)
   description: >
     Control two separate lights with an IKEA RODRET switch using Zigbee2MQTT.
     - Press "on" to toggle Light 1.
     - Press "off" to toggle Light 2.
     - Hold "on" to increase brightness of both lights.
     - Hold "off" to decrease brightness of both lights.
-    This blueprint ONLY works with devices added via the Zigbee2MQTT integration.
+    This robust version uses a separate trigger for each action to ensure reliable operation.
   domain: automation
   input:
-    rodret_switch:
-      name: RODRET Switch
-      description: "Select your IKEA RODRET switch that is managed by Zigbee2MQTT."
+    rodret_action_entity:
+      name: RODRET Action Entity
+      description: "Select the 'action' entity for your RODRET switch (e.g., sensor.bedroom_switch_action)."
       selector:
-        device:
-          filter:
-            - integration: mqtt
+        entity:
+          domain: sensor
+          device_class: enum
     light_1:
       name: Light 1 (On Button)
       description: "The light controlled by the 'on' button press."
@@ -38,75 +38,44 @@ blueprint:
           max: 50
           unit_of_measurement: "%"
 
-# Zigbee2MQTT Triggers Only
+# A single trigger for any change to the action entity
 trigger:
-  - platform: device
-    device_id: !input rodret_switch
-    domain: mqtt
-    type: button_short_press
-    subtype: button_1
-    id: press_on
-  - platform: device
-    device_id: !input rodret_switch
-    domain: mqtt
-    type: button_short_press
-    subtype: button_2
-    id: press_off
-  - platform: device
-    device_id: !input rodret_switch
-    domain: mqtt
-    type: button_long_press
-    subtype: button_1
-    id: hold_on
-  - platform: device
-    device_id: !input rodret_switch
-    domain: mqtt
-    type: button_long_release
-    subtype: button_1
-    id: release_on
-  - platform: device
-    device_id: !input rodret_switch
-    domain: mqtt
-    type: button_long_press
-    subtype: button_2
-    id: hold_off
-  - platform: device
-    device_id: !input rodret_switch
-    domain: mqtt
-    type: button_long_release
-    subtype: button_2
-    id: release_off
+  - platform: state
+    entity_id: !input rodret_action_entity
+    attribute: action
 
 action:
   - choose:
-      # --- Press "On" ---
+      # --- Press "On" (Button 1 Short Press) ---
       - conditions:
           - condition: trigger
-            id: press_on
+            to: "on"
         sequence:
           - service: light.toggle
             target:
               entity_id: !input light_1
 
-      # --- Press "Off" ---
+      # --- Press "Off" (Button 2 Short Press) ---
       - conditions:
           - condition: trigger
-            id: press_off
+            to: "off"
         sequence:
           - service: light.toggle
             target:
               entity_id: !input light_2
 
-      # --- Hold "On" (Increase Brightness) ---
+      # --- Hold "On" (Button 1 Long Press) ---
       - conditions:
           - condition: trigger
-            id: hold_on
+            to: "brightness_move_up"
         sequence:
           - repeat:
               until:
-                - condition: trigger
-                  id:
-                    - release_on
+                # This condition waits for the "stop" action
+                - condition: state
+                  entity_id: !input rodret_action_entity
+                  attribute: action
+                  state: "brightness_stop"
               sequence:
                 - service: light.turn_on
                   target:
@@ -117,16 +86,18 @@ action:
                     brightness_step_pct: !input brightness_step
                 - delay: 0.5
 
-      # --- Hold "Off" (Decrease Brightness) ---
+      # --- Hold "Off" (Button 2 Long Press) ---
       - conditions:
           - condition: trigger
-            id: hold_off
+            to: "brightness_move_down"
         sequence:
           - repeat:
               until:
-                - condition: trigger
-                  id:
-                    - release_off
+                # This condition waits for the "stop" action
+                - condition: state
+                  entity_id: !input rodret_action_entity
+                  attribute: action
+                  state: "brightness_stop"
               sequence:
                 - service: light.turn_on
                   target:
